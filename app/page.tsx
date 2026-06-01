@@ -4,20 +4,21 @@ import { useState } from 'react'
 import PlannerForm from '@/components/PlannerForm'
 import AgentPanel from '@/components/AgentPanel'
 import ItineraryView from '@/components/ItineraryView'
+import DisruptionPanel from '@/components/DisruptionPanel'
 import { AgentStatus, Itinerary, PlanRequest } from '@/lib/types'
 import { runOrchestratorAgent } from '@/lib/mockAgents'
 
 const INITIAL_AGENTS: AgentStatus[] = [
-  { id: 'orchestrator', name: 'Orchestrator', icon: '🧠', status: 'idle', message: 'Waiting for trip request…' },
-  { id: 'flights', name: 'Flight & Transit Agent', icon: '✈️', status: 'idle', message: 'Ready to scan routes.' },
-  { id: 'tickets', name: 'Ticket & Seat Agent', icon: '🎟️', status: 'idle', message: 'Ready to check availability.' },
-  { id: 'visa', name: 'Visa & Border Agent', icon: '🛂', status: 'idle', message: 'Ready to verify entry requirements.' },
+  { id: 'orchestrator', name: 'Orchestrator',          icon: '🧠', status: 'idle', message: 'Waiting for trip request…' },
+  { id: 'flights',      name: 'Flight & Transit Agent', icon: '✈️', status: 'idle', message: 'Ready to scan routes.' },
+  { id: 'tickets',      name: 'Ticket & Seat Agent',   icon: '🎟️', status: 'idle', message: 'Ready to check availability.' },
+  { id: 'visa',         name: 'Visa & Border Agent',   icon: '🛂', status: 'idle', message: 'Ready to verify entry requirements.' },
 ]
 
 export default function Home() {
-  const [agents, setAgents] = useState<AgentStatus[]>(INITIAL_AGENTS)
+  const [agents, setAgents]       = useState<AgentStatus[]>(INITIAL_AGENTS)
   const [itinerary, setItinerary] = useState<Itinerary | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading]     = useState(false)
 
   const updateAgent = (id: string, status: string, message: string) => {
     setAgents(prev => prev.map(a => a.id === id ? { ...a, status: status as any, message } : a))
@@ -31,7 +32,7 @@ export default function Home() {
     try {
       const result = await runOrchestratorAgent(req, updateAgent)
       setItinerary(result)
-    } catch (err) {
+    } catch {
       updateAgent('orchestrator', 'error', 'Agent error. Please try again.')
     } finally {
       setLoading(false)
@@ -60,7 +61,7 @@ export default function Home() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-          {/* Left: Form + Agents */}
+          {/* Left: Form + Agents + Disruption Panel */}
           <div className="lg:col-span-1 space-y-5">
             <div className="glass-strong rounded-2xl p-5">
               <h2 className="text-sm font-semibold uppercase tracking-widest text-gray-400 mb-4">
@@ -68,7 +69,11 @@ export default function Home() {
               </h2>
               <PlannerForm onSubmit={handlePlan} loading={loading} />
             </div>
+
             <AgentPanel agents={agents} />
+
+            {/* Disruption Recovery — visible once an itinerary is generated */}
+            {itinerary && <DisruptionPanel itinerary={itinerary} />}
           </div>
 
           {/* Right: Itinerary */}
@@ -103,7 +108,10 @@ export default function Home() {
 
         {/* Footer */}
         <div className="mt-12 text-center text-xs text-gray-600">
-          <p>Powered by multi-agent AI (LangGraph / CrewAI pattern) · Google Maps API · Flight & Hotel APIs</p>
+          <p>
+            Powered by multi-agent AI (LangGraph / CrewAI pattern) ·
+            🍃 MongoDB MCP · ⚡ Elastic MCP · Google Maps API
+          </p>
           <p className="mt-1">FIFA World Cup 2026 · USA · Mexico · Canada</p>
         </div>
       </div>

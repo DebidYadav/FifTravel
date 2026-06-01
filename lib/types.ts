@@ -80,3 +80,52 @@ export interface PlanRequest {
   stages: string[]
   nationality: string
 }
+
+// ─── Disruption Recovery Types ────────────────────────────────────────────────
+
+export interface DisruptionRequest {
+  delayMinutes: number
+  city: string
+  venue: string
+  matchDate: string
+  originalShuttleTime: string
+  airbnbCheckIn: string
+}
+
+export interface VenueOption {
+  id: string
+  name: string
+  type: 'shuttle' | 'sports_bar' | 'transit'
+  address: string
+  distanceKm: number
+  availableSeats?: number
+  nextDeparture?: string
+  rating?: number
+  openUntil?: string
+}
+
+export interface DisruptionPlan {
+  delayMinutes: number
+  shuttle: VenueOption
+  sportsBar: VenueOption
+  newCheckInWindow: { start: string; end: string }
+  estimatedExtraCost: number
+}
+
+export interface AgentThought {
+  agentId: string
+  agentName: string
+  icon: string
+  tool: string
+  reasoning: string
+  result: string
+}
+
+export interface ElasticMemoryEntry {
+  id:           string
+  city:         string
+  event:        string
+  delayMinutes: number
+  summary:      string
+  resolvedAt:   string
+}

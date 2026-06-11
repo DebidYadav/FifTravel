@@ -6,7 +6,6 @@ import AgentPanel from '@/components/AgentPanel'
 import ItineraryView from '@/components/ItineraryView'
 import DisruptionPanel from '@/components/DisruptionPanel'
 import { AgentStatus, Itinerary, PlanRequest } from '@/lib/types'
-import { runOrchestratorAgent } from '@/lib/mockAgents'
 
 const INITIAL_AGENTS: AgentStatus[] = [
   { id: 'orchestrator', name: 'Orchestrator',          icon: '🧠', status: 'idle', message: 'Waiting for trip request…' },
@@ -28,14 +27,29 @@ export default function Home() {
     setLoading(true)
     setItinerary(null)
     setAgents(INITIAL_AGENTS)
+    updateAgent('orchestrator', 'running', 'Submitting itinerary request to the server...')
 
     try {
-      const result = await runOrchestratorAgent(req, updateAgent)
-      setItinerary(result)
+      const res = await fetch('/api/plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data?.error ?? JSON.stringify(data))
+      }
+
+      updateAgent('flights', 'done', 'Flight routes loaded from the server.')
+      updateAgent('tickets', 'done', 'Ticket availability checked.')
+      updateAgent('visa', 'done', 'Visa requirements completed.')
+      updateAgent('orchestrator', 'done', 'Itinerary generated successfully.')
+      setItinerary(data)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       console.error('Orchestrator failure:', err)
       updateAgent('orchestrator', 'error', `Agent error: ${message}`)
+      updateAgent('flights', 'error', 'Failed to complete flight search.')
     } finally {
       setLoading(false)
     }

@@ -11,8 +11,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
-  const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL
-  if (ORCHESTRATOR_URL) {
+  const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL?.trim()
+  const USE_REMOTE_ORCHESTRATOR = ['1', 'true'].includes(
+    process.env.USE_REMOTE_ORCHESTRATOR?.trim().toLowerCase() ?? ''
+  )
+
+  if (USE_REMOTE_ORCHESTRATOR && ORCHESTRATOR_URL) {
     try {
       const res = await fetch(ORCHESTRATOR_URL, {
         method: 'POST',
@@ -20,9 +24,12 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify(body),
       })
       const data = await res.json()
-      return NextResponse.json(data, { status: res.status })
+      if (res.ok) {
+        return NextResponse.json(data, { status: res.status })
+      }
+      throw new Error(`Orchestrator proxy returned status ${res.status}`)
     } catch (err) {
-      return NextResponse.json({ error: 'Orchestrator proxy failed', details: String(err) }, { status: 502 })
+      console.error('Orchestrator proxy failed, falling back to local open-source flow:', err)
     }
   }
 

@@ -42,12 +42,15 @@ This project now uses public open-source endpoints for itinerary data where avai
 ```
 # External orchestrator to generate plans (server-side)
 ORCHESTRATOR_URL=https://orchestrator.fifatravel.com/plan
+USE_REMOTE_ORCHESTRATOR=0
 
 # Required: Public data providers for itinerary generation
 NEXT_PUBLIC_MATCH_API_URL=https://worldcupjson.net/matches
 NEXT_PUBLIC_FLIGHT_API_URL=https://api.skypicker.com/flights
 NEXT_PUBLIC_HOTEL_API_URL=https://overpass-api.de/api/interpreter
 NEXT_PUBLIC_VISA_API_URL=https://restcountries.com/v3.1
+
+# Optional: set USE_REMOTE_ORCHESTRATOR=1 to proxy itinerary requests through ORCHESTRATOR_URL
 ```
 
 The app also supports optional local mock MCP infrastructure for development if you want to override live data with mock endpoints.

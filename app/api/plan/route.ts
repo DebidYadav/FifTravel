@@ -15,6 +15,10 @@ export async function POST(req: NextRequest) {
   const USE_REMOTE_ORCHESTRATOR = ['1', 'true'].includes(
     process.env.USE_REMOTE_ORCHESTRATOR?.trim().toLowerCase() ?? ''
   )
+  const source = USE_REMOTE_ORCHESTRATOR && ORCHESTRATOR_URL
+    ? 'remote orchestrator'
+    : 'local open-source generator'
+  console.log(`[api/plan] Using ${source}`)
 
   if (USE_REMOTE_ORCHESTRATOR && ORCHESTRATOR_URL) {
     try {

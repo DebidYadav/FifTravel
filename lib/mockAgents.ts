@@ -49,15 +49,68 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c
 }
 
+async function safeFetchJson(url: string, init?: RequestInit) {
+  try {
+    const res = await fetch(url, init)
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status} ${res.statusText}`)
+    }
+    return await res.json()
+  } catch (err) {
+    throw new Error(`Fetch failed for ${url}: ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
+function fallbackMatches(team: string, stages: string[]): Match[] {
+  const cities = ['Mexico City', 'Houston', 'Toronto']
+  const countries = ['Mexico', 'USA', 'Canada']
+  const opponents = ['Brazil', 'Germany', 'Canada']
+  const stagesWithDefaults = stages.length > 0 ? stages : ['Group Stage', 'Round of 16', 'Quarter-Final']
+
+  return cities.map((city, index) => ({
+    team1: team,
+    team2: opponents[index] || 'Team B',
+    stage: stagesWithDefaults[index] ?? stagesWithDefaults[0],
+    date: ['2026-06-14', '2026-06-18', '2026-06-22'][index] ?? '2026-06-14',
+    time: ['19:00', '16:00', '20:00'][index] ?? '19:00',
+    city,
+    country: countries[index],
+    stadium: city === 'Mexico City' ? 'Estadio Azteca' : city === 'Houston' ? 'NRG Stadium' : 'BMO Field',
+    ticketPrice: 150 + index * 10,
+    ticketAvailable: index !== 2,
+    flag1: countryToFlag(team),
+    flag2: countryToFlag(opponents[index] ?? 'Team B'),
+  }))
+}
+
+function fallbackHotel(city: string): Hotel {
+  return {
+    name: `${city} Fan Lodge`,
+    city,
+    stars: 4,
+    pricePerNight: 145,
+    nights: 2,
+    distance: '1.0 km',
+  }
+}
+
+function fallbackVisaInfo(nationality: string, countries: string[]): VisaInfo[] {
+  return countries.map(country => ({
+    country,
+    requirement: nationality === country ? 'Visa-free' : 'ETA required',
+    processingTime: nationality === country ? 'N/A' : '5 business days',
+    fee: nationality === country ? 0 : 25,
+    notes: nationality === country ? 'No visa required for this passport.' : 'Apply online before departure.',
+  }))
+}
+
 async function getCityCoordinates(city: string) {
   const url = new URL('https://nominatim.openstreetmap.org/search')
   url.searchParams.set('q', city)
   url.searchParams.set('format', 'json')
   url.searchParams.set('limit', '1')
 
-  const res = await fetch(url.toString(), { headers: { 'Accept-Language': 'en' } })
-  if (!res.ok) throw new Error('City lookup failed')
-  const data = await res.json()
+  const data = await safeFetchJson(url.toString(), { headers: { 'Accept-Language': 'en' } })
   if (!Array.isArray(data) || data.length === 0) {
     throw new Error(`Unable to resolve city coordinates for ${city}`)
   }
@@ -66,37 +119,37 @@ async function getCityCoordinates(city: string) {
 }
 
 async function fetchWorldCupJsonMatches(team: string, stages: string[]): Promise<Match[]> {
-  const res = await fetch(LIVE_MATCH_API_URL!) // fallback guaranteed
-  if (!res.ok) {
-    throw new Error(`Match API request failed: ${res.status}`)
+  try {
+    const rawMatches = await safeFetchJson(LIVE_MATCH_API_URL!)
+    const matches = Array.isArray(rawMatches) ? rawMatches : []
+
+    return matches
+      .map((raw: any) => {
+        const datetime = raw.datetime || raw.date || ''
+        const [date, time] = datetime.split('T')
+        return {
+          team1: raw.home_team_country ?? raw.home_team ?? 'Team A',
+          team2: raw.away_team_country ?? raw.away_team ?? 'Team B',
+          stage: raw.stage_name ?? raw.stage ?? 'Group Stage',
+          date: date ?? '2026-06-14',
+          time: (time ? time.slice(0, 5) : raw.time) ?? '19:00',
+          city: raw.location ?? raw.venue ?? 'Unknown City',
+          country: raw.location ?? raw.country ?? 'Unknown',
+          stadium: raw.venue ?? raw.location ?? 'Stadium',
+          ticketPrice: 145,
+          ticketAvailable: true,
+          flag1: countryToFlag(raw.home_team_country ?? raw.home_team ?? ''),
+          flag2: countryToFlag(raw.away_team_country ?? raw.away_team ?? ''),
+        }
+      })
+      .filter(m =>
+        [m.team1, m.team2].some(t => t.toLowerCase().includes(team.toLowerCase()))
+          && (stages.length === 0 || stages.some(s => m.stage.toLowerCase().includes(s.toLowerCase())))
+      )
+  } catch (err) {
+    console.warn('Match API failed, falling back to sample matches:', err)
+    return fallbackMatches(team, stages)
   }
-
-  const rawMatches = await res.json()
-  const matches = Array.isArray(rawMatches) ? rawMatches : []
-
-  return matches
-    .map((raw: any) => {
-      const datetime = raw.datetime || raw.date || ''
-      const [date, time] = datetime.split('T')
-      return {
-        team1: raw.home_team_country ?? raw.home_team ?? 'Team A',
-        team2: raw.away_team_country ?? raw.away_team ?? 'Team B',
-        stage: raw.stage_name ?? raw.stage ?? 'Group Stage',
-        date: date ?? '2026-06-14',
-        time: (time ? time.slice(0, 5) : raw.time) ?? '19:00',
-        city: raw.location ?? raw.venue ?? 'Unknown City',
-        country: raw.location ?? raw.country ?? 'Unknown',
-        stadium: raw.venue ?? raw.location ?? 'Stadium',
-        ticketPrice: 145,
-        ticketAvailable: true,
-        flag1: countryToFlag(raw.home_team_country ?? raw.home_team ?? ''),
-        flag2: countryToFlag(raw.away_team_country ?? raw.away_team ?? ''),
-      }
-    })
-    .filter(m =>
-      [m.team1, m.team2].some(t => t.toLowerCase().includes(team.toLowerCase()))
-        && (stages.length === 0 || stages.some(s => m.stage.toLowerCase().includes(s.toLowerCase())))
-    )
 }
 
 async function fetchKiwiFlights(startCity: string, cities: string[]): Promise<Flight[]> {
@@ -119,22 +172,29 @@ async function fetchKiwiFlights(startCity: string, cities: string[]): Promise<Fl
       one_for_city: '1',
     })
     url.search = params.toString()
-    const res = await fetch(url.toString())
-    if (!res.ok) continue
-    const data = await res.json()
-    const flight = Array.isArray(data.data) && data.data[0]
-    if (!flight) continue
-    const departure = flight.local_departure?.split('T')[1]?.slice(0, 5) ?? '09:00'
-    const arrival = flight.local_arrival?.split('T')[1]?.slice(0, 5) ?? '12:30'
-    results.push({
-      from: flight.cityFrom || startCity,
-      to: flight.cityTo || city,
-      airline: (flight.airlines && flight.airlines[0]) || 'SkyWave Airlines',
-      departure,
-      arrival,
-      price: Number(flight.price) || 220,
-      duration: flight.fly_duration || '3h 30m',
-    })
+
+    try {
+      const data = await safeFetchJson(url.toString())
+      const flight = Array.isArray(data.data) ? data.data[0] : undefined
+      if (!flight) {
+        console.warn(`No flight returned for ${startCity} -> ${city}`)
+        continue
+      }
+      const departure = flight.local_departure?.split('T')[1]?.slice(0, 5) ?? '09:00'
+      const arrival = flight.local_arrival?.split('T')[1]?.slice(0, 5) ?? '12:30'
+      results.push({
+        from: flight.cityFrom || startCity,
+        to: flight.cityTo || city,
+        airline: (flight.airlines && flight.airlines[0]) || 'SkyWave Airlines',
+        departure,
+        arrival,
+        price: Number(flight.price) || 220,
+        duration: flight.fly_duration || '3h 30m',
+      })
+    } catch (err) {
+      console.warn(`Flight lookup failed for ${startCity} -> ${city}:`, err)
+      continue
+    }
   }
 
   return results.length > 0 ? results : cities.map((city) => ({
@@ -158,13 +218,11 @@ async function fetchOpenStreetMapHotels(cities: string[]): Promise<Hotel[]> {
 node["tourism"="hotel"](around:5000,${lat},${lon});
 out center 10;
       `
-      const res = await fetch(LIVE_HOTEL_API_URL!, {
+      const data = await safeFetchJson(LIVE_HOTEL_API_URL!, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
         body: query.trim(),
       })
-      if (!res.ok) continue
-      const data = await res.json()
       if (!Array.isArray(data.elements)) continue
 
       data.elements.slice(0, 3).forEach((element: any, index: number) => {
@@ -196,23 +254,37 @@ out center 10;
 }
 
 async function fetchRestCountriesVisaInfo(nationality: string, countries: string[]): Promise<VisaInfo[]> {
-  const nationalityRes = await fetch(`${LIVE_VISA_API_URL}/name/${encodeURIComponent(nationality)}?fullText=true`)
-  const nationalityData = nationalityRes.ok ? await nationalityRes.json() : []
-  const nationalityRegion = Array.isArray(nationalityData) ? nationalityData[0]?.region : 'Unknown'
+  try {
+    const nationalityData = await safeFetchJson(`${LIVE_VISA_API_URL}/name/${encodeURIComponent(nationality)}?fullText=true`)
+    const nationalityRegion = Array.isArray(nationalityData) ? nationalityData[0]?.region : 'Unknown'
 
-  return Promise.all(countries.map(async (country) => {
-    const countryRes = await fetch(`${LIVE_VISA_API_URL}/name/${encodeURIComponent(country)}?fullText=true`)
-    const countryData = countryRes.ok ? await countryRes.json() : []
-    const destinationRegion = Array.isArray(countryData) ? countryData[0]?.region : 'Unknown'
-    const visaFree = nationality === country || nationalityRegion === destinationRegion
-    return {
-      country,
-      requirement: visaFree ? 'Visa-free' : 'ETA required',
-      processingTime: visaFree ? 'N/A' : '5 business days',
-      fee: visaFree ? 0 : 25,
-      notes: visaFree ? 'No visa required for this passport.' : 'Apply online before departure.',
-    }
-  }))
+    return Promise.all(countries.map(async (country) => {
+      try {
+        const countryData = await safeFetchJson(`${LIVE_VISA_API_URL}/name/${encodeURIComponent(country)}?fullText=true`)
+        const destinationRegion = Array.isArray(countryData) ? countryData[0]?.region : 'Unknown'
+        const visaFree = nationality === country || nationalityRegion === destinationRegion
+        return {
+          country,
+          requirement: visaFree ? 'Visa-free' : 'ETA required',
+          processingTime: visaFree ? 'N/A' : '5 business days',
+          fee: visaFree ? 0 : 25,
+          notes: visaFree ? 'No visa required for this passport.' : 'Apply online before departure.',
+        }
+      } catch (err) {
+        console.warn(`Visa lookup failed for ${country}:`, err)
+        return {
+          country,
+          requirement: 'ETA required',
+          processingTime: '5 business days',
+          fee: 25,
+          notes: 'Visa information unavailable; apply proactively.',
+        }
+      }
+    }))
+  } catch (err) {
+    console.warn('Nationality visa lookup failed, using fallback visa summaries:', err)
+    return fallbackVisaInfo(nationality, countries)
+  }
 }
 
 function requireLiveEndpoint(url: string | undefined, name: string): string {

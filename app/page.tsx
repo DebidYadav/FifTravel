@@ -37,7 +37,8 @@ export default function Home() {
       })
       const data = await res.json()
       if (!res.ok) {
-        throw new Error(data?.error ?? JSON.stringify(data))
+        const detail = data?.details || data?.error || JSON.stringify(data)
+        throw new Error(detail)
       }
 
       updateAgent('flights', 'done', 'Flight routes loaded from the server.')
@@ -49,7 +50,7 @@ export default function Home() {
       const message = err instanceof Error ? err.message : String(err)
       console.error('Orchestrator failure:', err)
       updateAgent('orchestrator', 'error', `Agent error: ${message}`)
-      updateAgent('flights', 'error', 'Failed to complete flight search.')
+      updateAgent('flights', 'error', `Failed to complete flight search: ${message}`)
     } finally {
       setLoading(false)
     }

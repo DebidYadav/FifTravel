@@ -32,8 +32,10 @@ export default function Home() {
     try {
       const result = await runOrchestratorAgent(req, updateAgent)
       setItinerary(result)
-    } catch {
-      updateAgent('orchestrator', 'error', 'Agent error. Please try again.')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error('Orchestrator failure:', err)
+      updateAgent('orchestrator', 'error', `Agent error: ${message}`)
     } finally {
       setLoading(false)
     }

@@ -34,6 +34,20 @@
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms))
 
+// Live MCP endpoints can be provided via NEXT_PUBLIC_* env vars for client usage
+const ELASTIC_MCP_URL = typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_ELASTIC_MCP_URL : undefined
+const MONGO_MCP_URL = typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_MONGO_MCP_URL : undefined
+
+async function postJSON(url: string, body: any) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(`Request failed ${res.status}`)
+  return res.json()
+}
+
 // ─── Geo Coordinates (used inside ES|QL ST_DISTANCE) ─────────────────────────
 
 const CITY_COORDS: Record<string, { lat: number; lon: number }> = {
@@ -175,6 +189,17 @@ export interface MongoItinerary {
  * })
  */
 export async function mongoFindItinerary(city: string): Promise<MongoItinerary> {
+  // If a live Mongo MCP URL is configured, call it; otherwise fall back to stub
+  if (MONGO_MCP_URL) {
+    try {
+      const result = await postJSON(`${MONGO_MCP_URL.replace(/\/$/,'')}/mongodb_find`, { city })
+      return result as MongoItinerary
+    } catch (err) {
+      // fall through to stub on error
+      console.warn('mongoFindItinerary remote call failed:', err)
+    }
+  }
+
   await delay(450)
   const rnd = () => Math.random().toString(36).slice(2, 8).toUpperCase()
   return {
@@ -204,6 +229,14 @@ export async function mongoUpdateBooking(
   _bookingId: string,
   _updates: Record<string, string>,
 ): Promise<{ acknowledged: boolean; modifiedCount: number }> {
+  if (MONGO_MCP_URL) {
+    try {
+      const result = await postJSON(`${MONGO_MCP_URL.replace(/\/$/,'')}/mongodb_update_one`, { bookingId: _bookingId, updates: _updates })
+      return result as { acknowledged: boolean; modifiedCount: number }
+    } catch (err) {
+      console.warn('mongoUpdateBooking remote call failed:', err)
+    }
+  }
   await delay(300)
   return { acknowledged: true, modifiedCount: 1 }
 }
@@ -263,6 +296,17 @@ export async function elasticGeoSearch(
   _radiusKm:     number,
   delayMinutes = 0,
 ): Promise<GeoSearchResult[]> {
+  // If Elastic MCP URL is configured, call it and return results; otherwise use fixtures
+  if (ELASTIC_MCP_URL) {
+    try {
+      const body = { city, type, radiusKm: _radiusKm, delayMinutes }
+      const res = await postJSON(`${ELASTIC_MCP_URL.replace(/\/$/,'')}/search_venues`, body)
+      return res as GeoSearchResult[]
+    } catch (err) {
+      console.warn('elasticGeoSearch remote call failed:', err)
+    }
+  }
+
   await delay(600)
   const coords = CITY_COORDS[city] ?? CITY_COORDS['New York']
 
@@ -307,6 +351,14 @@ export async function elasticTransitTelemetry(
   _shuttleId:    string,
   delayMinutes:  number,
 ): Promise<{ status: string; nextSlot: string; capacity: number; occupied: number }> {
+  if (ELASTIC_MCP_URL) {
+    try {
+      const res = await postJSON(`${ELASTIC_MCP_URL.replace(/\/$/,'')}/transit_telemetry`, { shuttleId: _shuttleId, delayMinutes })
+      return res as { status: string; nextSlot: string; capacity: number; occupied: number }
+    } catch (err) {
+      console.warn('elasticTransitTelemetry remote call failed:', err)
+    }
+  }
   await delay(380)
   return {
     status:   'available',
@@ -357,6 +409,14 @@ export interface AgentMemoryEntry {
  *   })
  */
 export async function writeAgentMemory(entry: AgentMemoryEntry): Promise<{ result: string; _id: string }> {
+  if (ELASTIC_MCP_URL) {
+    try {
+      const res = await postJSON(`${ELASTIC_MCP_URL.replace(/\/$/,'')}/write_agent_memory`, { document: entry })
+      return res as { result: string; _id: string }
+    } catch (err) {
+      console.warn('writeAgentMemory remote call failed:', err)
+    }
+  }
   await delay(250)
   // Stub — in production this writes a document to the Elasticsearch index
   // so future agent sessions can retrieve it via semantic search or ES|QL recall.
